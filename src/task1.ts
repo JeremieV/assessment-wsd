@@ -1,4 +1,4 @@
-import puppeteer from 'puppeteer';
+import puppeteer, { Browser } from 'puppeteer';
 
 // Write a Node.js program using Puppeteer to scrape odds for a given horse racing event
 // from a bookmaker site. The script should take in the following parameters:
@@ -16,9 +16,12 @@ interface Output {
   }[]
 }
 
-async function scrapeOdds(eventUrl: string): Promise<Output> {
+let browser: Browser | null = null;
+
+export async function scrapeOdds(eventUrl: string): Promise<Output> {
   // Launch the browser, open a new blank page and navigate to the event URL
-  const browser = await puppeteer.launch();
+  if (browser === null) browser = await puppeteer.launch();
+
   const page = await browser.newPage();
   await page.goto(eventUrl);
   await page.setViewport({ width: 1080, height: 1024 });
@@ -26,7 +29,7 @@ async function scrapeOdds(eventUrl: string): Promise<Output> {
   const rowsSelector = `div.KambiBC-racing-participant-outcome-container`;
 
   // Wait for the rows to be loaded. There is a 30 seconds default timeout
-  await page.waitForSelector(rowsSelector)
+  await page.waitForSelector(rowsSelector);
 
   const horses = await page.$$eval(rowsSelector,
     elements => {
@@ -47,7 +50,7 @@ async function scrapeOdds(eventUrl: string): Promise<Output> {
     throw new Error('No horses found');
   }
 
-  await browser.close();
+  await page.close();
 
   return {
     eventUrl,
@@ -61,7 +64,7 @@ async function main() {
     console.error('Usage: node index.js <eventUrl>');
     process.exit(1);
   }
-  
+
   // validate URL
   const url = process.argv[2];
   try {
@@ -77,8 +80,46 @@ async function main() {
   }
 
   // run the main function (puppeteer)
-  const odds = await scrapeOdds(url)
+  const odds = await scrapeOdds(url);
   console.log(odds);
+
+  // close the browser and exit the process
+  await closeBrowser();
+  process.exit(0);
 }
 
-main();
+async function closeBrowser() {
+  return await browser?.close();
+}
+
+// Clean up the resources when the script is terminated
+// Register exit handlers to close browser on process termination
+process.on('exit', async () => {
+  console.log('Process exiting.');
+  // async logic is not guaranteed to run before the process exits
+  // care has to be taken to ensure that the browser is closed before the process exits
+  // this next line will not run in most cases...
+  await closeBrowser();
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received.');
+  await closeBrowser();
+  process.exit(0); // Ensure the process exits after cleaning up
+});
+
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received.');
+  await closeBrowser();
+  process.exit(0);
+});
+
+process.on('uncaughtException', async (err) => {
+  console.error('Uncaught Exception:', err);
+  await closeBrowser();
+  process.exit(1);
+});
+
+// if the script is being run directly, call the main function
+if (require.main === module)
+  main();

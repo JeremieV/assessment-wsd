@@ -1,5 +1,8 @@
 import puppeteer, { Browser } from 'puppeteer';
 
+
+// (instructions in case github copilot wants to help)
+// 
 // Write a Node.js program using Puppeteer to scrape odds for a given horse racing event
 // from a bookmaker site. The script should take in the following parameters:
 // - eventUrl (string): The URL of the horse racing event page on the bookmaker site.
@@ -8,17 +11,32 @@ import puppeteer, { Browser } from 'puppeteer';
 // and odds for the event from the bookmaker site, and return them in a JSON format.
 
 interface Output {
-  eventUrl: string;
-  horses: {
-    name: string;
-    /** Odds are in fractional form: "x/y" (e.g. 2/1) */
-    odds: string;
-  }[]
+  result?: {
+    eventUrl: string;
+    horses: {
+      name: string;
+      /** Odds are in fractional form: "x/y" (e.g. 2/1) */
+      odds: string;
+    }[];
+  }
+  error?: string;
 }
 
 let browser: Browser | null = null;
 
 export async function scrapeOdds(eventUrl: string): Promise<Output> {
+  try {
+    // will throw if the URL is invalid
+    new URL(eventUrl);
+  } catch {
+    return { error: `Invalid URL: ${eventUrl}` };
+  }
+
+  // ensure that the URL is a betmgm.co.uk URL
+  if (!(new URL(eventUrl).hostname === 'www.betmgm.co.uk')) {
+    return { error: 'Invalid URL: must be a www.betmgm.co.uk URL' };
+  }
+
   // Launch the browser, open a new blank page and navigate to the event URL
   if (browser === null) browser = await puppeteer.launch();
 
@@ -28,8 +46,12 @@ export async function scrapeOdds(eventUrl: string): Promise<Output> {
 
   const rowsSelector = `div.KambiBC-racing-participant-outcome-container`;
 
-  // Wait for the rows to be loaded. There is a 30 seconds default timeout
-  await page.waitForSelector(rowsSelector);
+  try {
+    // Wait for the rows to be loaded. There is a 30 seconds default timeout
+    await page.waitForSelector(rowsSelector);
+  } catch (error) {
+    return { error: 'Timeout error. Rows not found. This may happen for events that have already passed.' };
+  }
 
   const horses = await page.$$eval(rowsSelector,
     elements => {
@@ -47,14 +69,16 @@ export async function scrapeOdds(eventUrl: string): Promise<Output> {
     });
 
   if (!horses) {
-    throw new Error('No horses found');
+    return { error: 'No horses found' };
   }
 
   await page.close();
 
   return {
-    eventUrl,
-    horses
+    result: {
+      eventUrl,
+      horses
+    }
   }
 };
 
@@ -67,21 +91,10 @@ async function main() {
 
   // validate URL
   const url = process.argv[2];
-  try {
-    // will throw if the URL is invalid
-    new URL(url);
-  } catch {
-    console.error(`Invalid URL: ${url}`);
-    process.exit(1);
-  }
-  // ensure that the URL is a betmgm.co.uk URL
-  if (!(new URL(url).hostname === 'www.betmgm.co.uk')) {
-    throw new Error('Invalid URL: must be a betmgm.co.uk URL');
-  }
 
   // run the main function (puppeteer)
   const odds = await scrapeOdds(url);
-  console.log(odds);
+  console.log(odds.result ?? odds.error);
 
   // close the browser and exit the process
   await closeBrowser();
@@ -121,5 +134,6 @@ process.on('uncaughtException', async (err) => {
 });
 
 // if the script is being run directly, call the main function
-if (require.main === module)
+if (require.main === module) {
   main();
+}

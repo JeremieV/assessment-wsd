@@ -1,10 +1,18 @@
 # White Swan Data Node Assessment
 
+## Running the 
+
 To run the code, do:
 
 ```sh
+# run task 1
+# run task 2
+# run tests
 
+# run in a docker container
 ```
+
+The following is a walk through of how I approached the task.
 
 ## Setup
 
@@ -30,7 +38,7 @@ It took me some time to explore puppeteer and the different bookmakers, but i en
 
 If we look at an example URL:
 
-https://www.betmgm.co.uk/sports\#racing/event/1021685425
+`https://www.betmgm.co.uk/sports#racing/event/1021685425`
 
 We see that the UI is made up of rows that contain horse name and fractional odds, among other things. We want to extract each row separately, and then from each row select the name and the odds, so that they do not get scrambled.
 
@@ -99,6 +107,51 @@ On my machine, we go from ~5.8s to ~2.8s on each api call (except the first one)
 
 ### Implementing the authentication and authorization
 
+I will use JWT tokens for the authentication and authorization. They are stateless and scalable but there is no easy way to revoke them once issued.
+
+The `/login` endpoint hands JWT tokens to users. The JWT tokens are set to expire within 1h.
+
+In the real world you would check that the user exists in the database and that the provided password is correct:
+
+```js
+// something like that
+const validPassword = bcrypt.compareSync(database_password, request_password);
+```
+
+JWT is appropriate when tokens need to be stored client-side, such as in local storage or cookies, and sent with every request.
+
+However this API is likely to be consumed by another server proces in the real world.
+
+So an API such as this one should probably be authenticated by a per-user API token generated randomly for every account and stored in the database.
+
+But implementing this is trivial and not easy to showcase without a database. So I have decided to go for JWT.
+
+---
+
+Once the token is retrieved from the `/login` endpoint, it can be used in the authorisation header in the form of `Bearer <token>` to gain access to the `/odds` endpoint.
+
 ### One last thing... testing!
 
-- TODO catch the timeout errors which make the process exit
+I'll create some unit tests for the API. Make sure it doesn't respond to unauthorized requests, and that it returns the odds correctly.
+
+```sh
+npm i jest @types/jest supertest @types/supertest
+``` 
+
+The tests depend on a URL of an event in the future, one in the past, and an international event (that does not display any odds). They are declared as constants at the top of the `all.test.ts` file. It is necessary to manually input the correct URLs based on the current time, or the tests might not work correctly.
+
+### Another last thing... containers
+
+Let's containerise the app in order to create a reproducible environment. It's also most likely what you'd do to deploy the app.
+
+## Conclusion
+
+There are limitations to the API I have built. For one, it can only scrape events in the future. For any events that have already passed, it will return an error code. I assumed this was acceptable for this minimal example, although depending on the use case passed event odds could be useful.
+
+For some events, such as events happening in France, for example, the odds aren't availale on the bookmaker and my script returns "SP" in place of all the odds. I also assumed this was acceptable behaviour.
+
+I may have made other mistakes due to my ignorance of betting... my script works for the events in "meetings", not "Specials & Ante Post". What is the difference? On the job I would gather some more knowledge on the domain.
+
+There are certainly things that could be improved. One thing I'm not happy about is that the API requests and responses aren't very strictly typed. Another thing is that I'm sure there are better ways to validate the request bodies.
+
+I am conscious that there could be improvements, but I know I would learn all of the best practices and your team's preferences very quickly on the job. I haven't written APIs like these in a long time, but I am quite conscientious and can adhere to conventions. All this to say I could write very clean, typed API endpoints in no time.

@@ -50,7 +50,7 @@ export async function scrapeOdds(eventUrl: string): Promise<Output> {
     // Wait for the rows to be loaded. There is a 30 seconds default timeout
     await page.waitForSelector(rowsSelector);
   } catch (error) {
-    return { error: 'Timeout error. Rows not found. This may happen for events that have already passed.' };
+    return { error: 'Timeout error. Rows not found. This may happen for past events. Please make sure to input a future event.' };
   }
 
   const horses = await page.$$eval(rowsSelector,

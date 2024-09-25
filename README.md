@@ -2,14 +2,30 @@
 
 ## Running the 
 
-To run the code, do:
+The api serves requests on port 3000. 
+
+To run the code, do the following:
+
+(I have node version v18.18.1 and npm version 9.8.1). Chrome versions may differ, but I think puppeteer installs its own chrome exectutable. 
 
 ```sh
-# run task 1
-# run task 2
-# run tests
+# run locally
+# task 1
+npm run script
+# task 2
+npm run server
+# tests
+npm run tests
 
-# run in a docker container
+# run in a docker container — DOES NOT WORK :(
+# build the image
+docker build -t scraper .
+# task 1
+docker run -i --init --rm --cap-add=SYS_ADMIN scraper node dist/task1.js https://www.betmgm.co.uk/sports\#racing/event/1021685454
+#task 2
+docker run -p 3000:3000 scraper
+# tests
+docker run scraper jest dist
 ```
 
 The following is a walk through of how I approached the task.
@@ -30,9 +46,7 @@ git init
 
 ## Task 1
 
-I checked the first three bookmakers at the [provided link](https://www.telegraph.co.uk/betting/sports-guides/best-betting-sites-uk/) and chose bet365.com somewhat arbitrarily but also because the interface looked clean and regular.
-
-I have no experience using puppeteer but I am very familiar with playwright, so I need to read the documentation a little bit.
+I checked the first three bookmakers at the [provided link](https://www.telegraph.co.uk/betting/sports-guides/best-betting-sites-uk/).
 
 It took me some time to explore puppeteer and the different bookmakers, but i ended up settling on betmgm.co.uk because it seemed to have the easiest markup to work with.
 
@@ -40,11 +54,11 @@ If we look at an example URL:
 
 `https://www.betmgm.co.uk/sports#racing/event/1021685425`
 
-We see that the UI is made up of rows that contain horse name and fractional odds, among other things. We want to extract each row separately, and then from each row select the name and the odds, so that they do not get scrambled.
+We see that the UI is made up of rows that contain horse name and fractional odds, among other things. We want to extract each row separately, and then from each row select the name and the odds, so that we are sure that the odds correspond to that horse name.
 
 A row is a div with the class `KambiBC-racing-participant-outcome-container`. We can then query the rows by using the following query selector:
 
-```
+```css
 div.KambiBC-racing-participant-outcome-container
 ```
 
@@ -54,17 +68,17 @@ Importantly, before we do so, we need to wait for the page to load. We can wait 
 await page.waitForSelector(rowsSelector)
 ```
 
-We can then select all the rows and extract the name and available odds using puppeteer. Notice that the bookmaker I have chosen does not display the odds other than the UK, Australia and South Africa.
+We can then select all the rows and extract the name and available odds using puppeteer. Notice that the bookmaker I have chosen does not usually display the odds other than the UK, Australia and South Africa.
 
 If the country is none of the above, then the only odds displayed are 'SP' ("Starting Price"). In this case, my puppeteer script returns 'SP'. This can be easily changed depending on the desired behaviour (unspecified in the instructions).
 
-Another edge case to take into account is for events that have already finished. In this case, the bookmaker site uses a slightly different markup, and my script times out. For a production application this case should certainly be handled.
+Another edge case to take into account is for events that have already finished. In this case, the bookmaker site uses a slightly different markup, and my script returns an error. I assume this is an acceptable constraint: "we can only scrape future events".
 
 ## Task 2
 
 I installed express and chose to keep the application scaffold simple for this simple app (so I didn't use the `express-generator` which can generate a default application scaffold).
 
-Instead I intead to create the server in a single file to keep it simple.
+Instead I intend to create the server in a single file to keep it simple.
 
 Running puppeteer (a headless browser) on the server would certainly be too resource intensive so instead I intend to scrape the bookmakers using axios and cheerios.
 
@@ -76,19 +90,19 @@ For the `/odds` endpoint I asked ChatGPT to translate my puppeteer code into cod
 
 Huh... funnily, the endpoint fails to fetch the data from the webpage. Cheerios is not a web browser, it does not render the page or run client side javascript. This turns out to be the source of my error: if I disable javascript in the browser, the desired data does not load. I think this is the case for all the big bookmakers, because I saw loading indicators on all of them (indicating hydration).
 
-Honestly, I should have thought of this beforehand. But I will blame it on my limited scraping experience 😇. 
+Honestly, I should have thought of this beforehand. But I will blame it on my limited scraping experience...
 
 So it turns out we will need to run puppeteer on the server in the end... the assignment makes more sense now.
 
 ```sh
-npm uninstall cheerio
+npm uninstall axios cheerio
 ```
 
 It is simply a matter of calling the scrapeOdds function from the `/odds` api endpoint, so that's easy.
 
 ### An important optimisation
 
-However I'm immediately thinking that launching a new headless browser for each request is not very effective... so I moved the browser to a global variable, which gets instantiated only once during the execution of the server.
+However I'm immediately thinking that launching a new headless browser for each request is not very effective... so I moved the browser object to a global variable, which gets instantiated only once during the execution of the server.
 
 ```js
 let browser: Browser | null = null;
@@ -99,11 +113,45 @@ export async function scrapeOdds(eventUrl: string): Promise<Output> {
   ...
 ```
 
-Then we need to close the browser properly when the process exits, to not leave resources hanging.
+Then we need to close the browser properly when the process exits, to not leave resources hanging:
+
+```js
+async function closeBrowser() {
+  return await browser?.close();
+}
+
+// Clean up the resources when the script is terminated
+// Register exit handlers to close browser on process termination
+process.on('exit', async () => {
+  console.log('Process exiting.');
+  // async logic is not guaranteed to run before the process exits
+  // care has to be taken to ensure that the browser is closed before the process exits
+  // this next line will not run in most cases...
+  await closeBrowser();
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received.');
+  await closeBrowser();
+  process.exit(0); // Ensure the process exits after cleaning up
+});
+
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received.');
+  await closeBrowser();
+  process.exit(0);
+});
+
+process.on('uncaughtException', async (err) => {
+  console.error('Uncaught Exception:', err);
+  await closeBrowser();
+  process.exit(1);
+});
+```
 
 Inside `scrapeOdds`, we now simply open a new page and close it at the end of the function, which is much faster than initializing a new browser each time.
 
-On my machine, we go from ~5.8s to ~2.8s on each api call (except the first one) thanks to this optimisation.
+On my machine, we go from ~5.8s to ~2.8s on each api call (except the first one) thanks to this optimisation. We still need to wait for the webpage to load so we certainly can't do much better.
 
 ### Implementing the authentication and authorization
 
@@ -126,32 +174,51 @@ So an API such as this one should probably be authenticated by a per-user API to
 
 But implementing this is trivial and not easy to showcase without a database. So I have decided to go for JWT.
 
----
-
 Once the token is retrieved from the `/login` endpoint, it can be used in the authorisation header in the form of `Bearer <token>` to gain access to the `/odds` endpoint.
 
 ### One last thing... testing!
 
-I'll create some unit tests for the API. Make sure it doesn't respond to unauthorized requests, and that it returns the odds correctly.
+I'll create some unit tests for the API. I will make sure it doesn't respond to unauthorized requests, and that it returns the odds correctly.
 
 ```sh
 npm i jest @types/jest supertest @types/supertest
 ``` 
 
-The tests depend on a URL of an event in the future, one in the past, and an international event (that does not display any odds). They are declared as constants at the top of the `all.test.ts` file. It is necessary to manually input the correct URLs based on the current time, or the tests might not work correctly.
+The tests depend on the URLs of an event in the future, one in the past, and an international event (that does not display any odds). They are declared as constants at the top of the `all.test.ts` file. **It is necessary to manually input the correct URLs based on the current time, or the tests might not work correctly.**
 
 ### Another last thing... containers
 
-Let's containerise the app in order to create a reproducible environment. It's also most likely what you'd do to deploy the app.
+I wanted to containerise the app to make the builds reproducible.
+
+I went for the official puppeteer image because I can foresee the many different dependencies and steps needed in order to make puppeteer work inside a container.
+
+However I get the following error when I run my docker container:
+
+```
+Uncaught Exception: Error: Could not find Chrome (ver. 129.0.6668.58). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install ${browserType}`) or
+ 2. your cache path is incorrectly configured (which is: /home/pptruser/.cache/puppeteer).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.
+    at ChromeLauncher.resolveExecutablePath (/usr/src/app/node_modules/puppeteer-core/lib/cjs/puppeteer/node/BrowserLauncher.js:292:27)
+    at ChromeLauncher.executablePath (/usr/src/app/node_modules/puppeteer-core/lib/cjs/puppeteer/node/ChromeLauncher.js:209:25)
+    at ChromeLauncher.computeLaunchArguments (/usr/src/app/node_modules/puppeteer-core/lib/cjs/puppeteer/node/ChromeLauncher.js:89:37)
+    at async ChromeLauncher.launch (/usr/src/app/node_modules/puppeteer-core/lib/cjs/puppeteer/node/BrowserLauncher.js:71:28)
+```
+
+I have tried everything and I still can't get it to work. So I decided to give up. I hope that's alright!
+
+Among other things I have tried aliasing `chrome`, remove and reinstall puppeteer during the build (recommended online), setting environment the path to the correct value using environment variables, and more.
 
 ## Conclusion
 
-There are limitations to the API I have built. For one, it can only scrape events in the future. For any events that have already passed, it will return an error code. I assumed this was acceptable for this minimal example, although depending on the use case passed event odds could be useful.
+There are limitations to the API I have built. For one, it can only scrape events in the future. For any events that have already passed, it will return an error code. I assumed this was acceptable for this minimal example, although depending on the use case previous events' odds could be useful.
 
-For some events, such as events happening in France, for example, the odds aren't availale on the bookmaker and my script returns "SP" in place of all the odds. I also assumed this was acceptable behaviour.
+For some events, such as events in the "international" category, the odds aren't usually availale on the bookmaker site and my script returns "SP" in place of all the odds. I also assumed this was acceptable behaviour.
 
-I may have made other mistakes due to my ignorance of betting... my script works for the events in "meetings", not "Specials & Ante Post". What is the difference? On the job I would gather some more knowledge on the domain.
+My script may also return "SP" for some grayed out horses, at the end of the list. For some others the odds may still be scraped although they do not appear on the screen. I didn't know what to make of this.
 
-There are certainly things that could be improved. One thing I'm not happy about is that the API requests and responses aren't very strictly typed. Another thing is that I'm sure there are better ways to validate the request bodies.
+I may have made mistakes due to my ignorance of betting... my script works for the events in "meetings", not "Specials & Ante Post". What is the difference? On the job I would gather some more domain knowledge.
 
-I am conscious that there could be improvements, but I know I would learn all of the best practices and your team's preferences very quickly on the job. I haven't written APIs like these in a long time, but I am quite conscientious and can adhere to conventions. All this to say I could write very clean, typed API endpoints in no time.
+There are certainly things about the code that could be improved. One thing I'm not happy about is that the API requests and responses aren't very strictly typed. Another thing is that I'm sure there are better ways to validate the request bodies.
+
+I am conscious that there could be improvements, but I know I would learn all of the best practices and your team's preferences very quickly on the job. I haven't written APIs like this in a long time, but I am quite conscientious and can adhere to conventions. All this to say I could write very clean, typed API endpoints in no time!

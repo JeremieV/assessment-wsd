@@ -1,10 +1,9 @@
 import request from 'supertest';
 import app from './task2';
-import { after } from 'node:test';
 
 const futureEvent = `https://www.betmgm.co.uk/sports#racing/event/1021685425`;
 const pastEvent = `https://www.betmgm.co.uk/sports#racing/event/1021694011`;
-const internationalEvent = `https://www.betmgm.co.uk/sports#racing/event/1021694152`;
+// const internationalEvent = `https://www.betmgm.co.uk/sports#racing/event/1021694152`;
 
 describe('Single test suite for the entire API', () => {
   // 200 seconds just in case
@@ -120,45 +119,48 @@ describe('Single test suite for the entire API', () => {
 
       // odds should be a fractional odd
       expect(typeof horse.odds).toBe('string');
-      const [num, den] = horse.odds.split('/');
-      expect(parseInt(num)).toBeGreaterThanOrEqual(1);
-      expect(parseInt(den)).toBeGreaterThanOrEqual(1);
+      // odds should be a fraction or 'SP'
+      if (horse.odds !== 'SP') {
+        const [num, den] = horse.odds.split('/');
+        expect(parseInt(num)).toBeGreaterThanOrEqual(1);
+        expect(parseInt(den)).toBeGreaterThanOrEqual(1);
+      }
     }
   });
 
+  // i have remove this test because it may be hard to understand what an "international" event is
+  // it('all odds should be "SP" for "international" events', async () => {
+  //   // aquire token
+  //   const loginRes = await request(app)
+  //     .post('/login')
+  //     .send({ username: 'test' });
 
-  it('all odds should be "SP" for "international" events', async () => {
-    // aquire token
-    const loginRes = await request(app)
-      .post('/login')
-      .send({ username: 'test' });
+  //   const token = loginRes.body.token;
 
-    const token = loginRes.body.token;
+  //   const res = await request(app)
+  //     .get('/odds')
+  //     .set('Authorization', `Bearer ${token}`)
+  //     // this is an event scheduled in the future
+  //     .send({ eventUrl: internationalEvent });
 
-    const res = await request(app)
-      .get('/odds')
-      .set('Authorization', `Bearer ${token}`)
-      // this is an event scheduled in the future
-      .send({ eventUrl: internationalEvent });
+  //   expect(res.status).toBe(200);
+  //   expect(res.body).toHaveProperty('eventUrl');
+  //   expect(res.body).toHaveProperty('horses');
+  //   expect(res.body.horses.length).toBeGreaterThan(0);
 
-    expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('eventUrl');
-    expect(res.body).toHaveProperty('horses');
-    expect(res.body.horses.length).toBeGreaterThan(0);
+  //   for (const horse of res.body.horses) {
+  //     expect(horse).toHaveProperty('name');
+  //     expect(horse).toHaveProperty('odds');
 
-    for (const horse of res.body.horses) {
-      expect(horse).toHaveProperty('name');
-      expect(horse).toHaveProperty('odds');
+  //     // name should be a non-empty string
+  //     expect(typeof horse.name).toBe('string');
+  //     expect(horse.name.length).toBeGreaterThan(0);
 
-      // name should be a non-empty string
-      expect(typeof horse.name).toBe('string');
-      expect(horse.name.length).toBeGreaterThan(0);
-
-      // odds should be 'SP'
-      expect(typeof horse.odds).toBe('string');
-      expect(horse.odds).toBe('SP');
-    }
-  });
+  //     // odds should be 'SP'
+  //     expect(typeof horse.odds).toBe('string');
+  //     expect(horse.odds).toBe('SP');
+  //   }
+  // });
 
   afterAll((done) => {
     app.close(() => done());

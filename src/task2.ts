@@ -13,8 +13,8 @@ Build a RESTful API that exposes an endpoint for scraping odds from a bookmaker 
 The API should have the following endpoint:
 - POST /odds: Scrape odds for a given horse racing event from a bookmaker site. The request body should contain the following fields:
   - eventUrl (string): The URL of the sports event page on the bookmaker site. The
-API should implement authentication and authorization, so that only authenticated users can
-access the /odds endpoint. You can use an API token or any library of your choice.
+    API should implement authentication and authorization, so that only authenticated users can
+    access the /odds endpoint. You can use an API token or any library of your choice.
 
 */
 
@@ -59,7 +59,7 @@ app.post('/login', (req: Request, res: Response) => {
   res.json({ token });
 });
 
-app.get('/odds', authenticateToken, async (req: Request, res: Response) => {
+app.post('/odds', authenticateToken, async (req: Request, res: Response) => {
   if (!req.body) {
     return res.status(400).send({ error: 'Missing request body' });
   }

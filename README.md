@@ -1,34 +1,91 @@
 # White Swan Data Node Assessment
 
-## Running the 
-
-The api serves requests on port 3000. 
+## Instructions for running the code
 
 To run the code, do the following:
 
-(I have node version v18.18.1 and npm version 9.8.1). Chrome versions may differ, but I think puppeteer installs its own chrome exectutable. 
+### Task 1: scraping
+
+Replace `<url>` by a url of a **future** horse racing event from btemgm.co.uk.
+
+A url should look like https://www.betmgm.co.uk/sports\#racing/event/1021685454 , but with a future event id.
 
 ```sh
-# run locally
-# task 1
-npm run script
-# task 2
-npm run server
-# tests
-npm run tests
-
-# run in a docker container — DOES NOT WORK :(
-# build the image
-docker build -t scraper .
-# task 1
-docker run -i --init --rm --cap-add=SYS_ADMIN scraper node dist/task1.js https://www.betmgm.co.uk/sports\#racing/event/1021685454
-#task 2
-docker run -p 3000:3000 scraper
-# tests
-docker run scraper jest dist
+npm run script -- <url>
 ```
 
-The following is a walk through of how I approached the task.
+The result of the execution will be printed to the console.
+
+### Task 2: API
+
+Run the server like so:
+
+```sh
+npm run server
+```
+
+The api serves requests on `localhost:3000`
+
+There are 2 API endpoints:
+
+POST `/login`:
+- you need to authenticate with this endpoint to retrieve a JWT before being able to fetch the odds.
+- the body of the request should be a JSON object of the type `{ username: string }`
+- the username does not matter, for this example all usernames are valid and the response will be a JSON object of type `{ token: string }`
+- the token has to be used in order to gain access to the `/odds` endpoint
+
+POST `/odds`:
+- has to be queried with the `authorization` header set to the value `Bearer <token>` where `<token>` is replace by the one obtained from the `/login` endpoint.
+- the JSON body of the request should be an object of type `{ eventUrl: string }` where the string is a future horse racing event.
+- returns an object of type `{ eventUrl: string, horses: { name: string, odds: string }[] }`
+
+In case of errors, both endpoints will return an error code with a JSON body of type `{ error: string }` detailing the error.
+
+I used Postman for sending the requests during development. For quickly testing the endpoints, you can use the following commands:
+
+```sh
+# retrieving the JWT token
+curl -X POST localhost:3000/login \
+  -H "Content-Type: application/json" \
+  -d '{ "username": "exampleUser" }'
+
+# fill these two based on the previous request and the url you would like to scrape
+export token="<token from previous request>"
+export url="https://www.betmgm.co.uk/sports#racing/event/1021707893"
+
+# fetching the odds
+curl -X POST localhost:3000/odds \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $token" \
+  -d "{ \"eventUrl\": \"$url\" }"
+```
+
+### Running the tests
+
+**Before running the tests is necessary to input correct URLs based on the current time, or the tests might not work correctly.**
+
+This is done by changing the first two constants at the top of the `src/all.test.ts` file: `futureEvent` and `pastEvent`. Fill them with a url for an event that hasn't happened, and an event that has already happened, respectively.
+
+You can then run the tests by using:
+
+```sh
+npm run test
+```
+
+### Running in a container
+
+I tried containerising the app but I could not get it to work. This is to show how it would have worked. You can safely ignore this subsection.
+
+```sh
+docker build -t scraper . # build the image
+docker run -i --init --rm --cap-add=SYS_ADMIN scraper node dist/task1.js https://www.betmgm.co.uk/sports\#racing/event/1021685454 # task 1
+docker run -p 3000:3000 scraper # task 2
+docker run scraper jest dist # tests
+```
+
+---
+
+The rest of this file is a walk through of how I approached the task.
 
 ## Setup
 
@@ -176,17 +233,17 @@ But implementing this is trivial and not easy to showcase without a database. So
 
 Once the token is retrieved from the `/login` endpoint, it can be used in the authorisation header in the form of `Bearer <token>` to gain access to the `/odds` endpoint.
 
-### One last thing... testing!
+### Testing
 
-I'll create some unit tests for the API. I will make sure it doesn't respond to unauthorized requests, and that it returns the odds correctly.
+I have created some unit tests for the API. I will make sure it doesn't respond to unauthorized requests, and that it returns the odds correctly.
 
 ```sh
 npm i jest @types/jest supertest @types/supertest
-``` 
+```
 
-The tests depend on the URLs of an event in the future, one in the past, and an international event (that does not display any odds). They are declared as constants at the top of the `all.test.ts` file. **It is necessary to manually input the correct URLs based on the current time, or the tests might not work correctly.**
+Please refer to the `src/all.test.ts` file for more details.
 
-### Another last thing... containers
+### Containerising
 
 I wanted to containerise the app to make the builds reproducible.
 

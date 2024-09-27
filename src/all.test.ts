@@ -1,7 +1,7 @@
 import request from 'supertest';
 import app from './task2';
 
-const futureEvent = `https://www.betmgm.co.uk/sports#racing/event/1021685425`;
+const futureEvent = `https://www.betmgm.co.uk/sports#racing/event/1021707893`;
 const pastEvent = `https://www.betmgm.co.uk/sports#racing/event/1021694011`;
 // const internationalEvent = `https://www.betmgm.co.uk/sports#racing/event/1021694152`;
 
@@ -39,18 +39,18 @@ describe('Single test suite for the entire API', () => {
     expect(res.body.token.length).toBeGreaterThan(0);
   });
 
-  // GET /odds route
+  // POST /odds route
 
   it('should fail for unauthenticated requests (without body)', async () => {
     const res = await request(app)
-      .get('/odds');
+      .post('/odds');
 
     expect(res.status).toBe(401);
   });
 
   it('should fail for unauthenticated requests (with body)', async () => {
     const res = await request(app)
-      .get('/odds')
+      .post('/odds')
       .send({ eventUrl: 'https://www.betmgm.co.uk' });
 
     expect(res.status).toBe(401);
@@ -65,7 +65,7 @@ describe('Single test suite for the entire API', () => {
     const token = loginRes.body.token;
 
     const res = await request(app)
-      .get('/odds')
+      .post('/odds')
       .set('Authorization', `Bearer ${token}`)
       // this is an event scheduled in the future
       .send({ eventUrl: 'https://www.bet365.com/#/AC/B2/C101/D20240925/E20998544/F162335784/' });
@@ -82,7 +82,7 @@ describe('Single test suite for the entire API', () => {
     const token = loginRes.body.token;
 
     const res = await request(app)
-      .get('/odds')
+      .post('/odds')
       .set('Authorization', `Bearer ${token}`)
       // this is an event that happened in the past
       .send({ eventUrl: pastEvent });
@@ -99,7 +99,7 @@ describe('Single test suite for the entire API', () => {
     const token = loginRes.body.token;
 
     const res = await request(app)
-      .get('/odds')
+      .post('/odds')
       .set('Authorization', `Bearer ${token}`)
       // this is an event scheduled in the future
       .send({ eventUrl: futureEvent });
@@ -138,7 +138,7 @@ describe('Single test suite for the entire API', () => {
   //   const token = loginRes.body.token;
 
   //   const res = await request(app)
-  //     .get('/odds')
+  //     .post('/odds')
   //     .set('Authorization', `Bearer ${token}`)
   //     // this is an event scheduled in the future
   //     .send({ eventUrl: internationalEvent });
